@@ -10,7 +10,7 @@ void time_init(void)
 	lptmr_config_t gen_timer_cfg;
 	LPTMR_GetDefaultConfig(&gen_timer_cfg);
 	gen_timer_cfg.enableFreeRunning = true;
-	gen_timer_cfg.value = kLPTMR_Prescale_Glitch_10; // divide by 2^x -> 2048
+	gen_timer_cfg.value = kLPTMR_Prescale_Glitch_12; // GLITCH 10 divide by 2^x -> 2048
 													 // 2Mhz -> 976.56Hz = 1.024ms / tick
 													 // 16bit period means .. maximum period 63.999 seconds = 1 min 4 sec
 	gen_timer_cfg.bypassPrescaler = false;

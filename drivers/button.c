@@ -12,11 +12,17 @@ button_state button_1_state = BUTTON_STATE_UNPRESSED;
 button_state button_2_state = BUTTON_STATE_UNPRESSED;
 
 FTM_Type * ftm_debounce = ((FTM_Type *)FTM0_BASE);
+#define DUR_TICK_INIT_CNT 0
+#define DUR_TICK_SHORT_PRESS_THRESH 1000
+#define DUR_TICK_LONG_HOLD_THRESH 10000
+unsigned int duration_tick_held[2] = {0,0};
+uint32_t button_held_ack = 0;
 void GEN_TIMER_10K_IRQHANDLER(void)
 {
 	static uint32_t idx=0;
 	static int prev_debounce = 0x0;
-	button_states[idx] = pButtons->PDIR;
+
+	button_states[idx] = ~(pButtons->PDIR);
 	idx++;
 
 	int debounce = 0xFFFFFFFF;
@@ -26,6 +32,77 @@ void GEN_TIMER_10K_IRQHANDLER(void)
 	}
 
 	int change = debounce ^ prev_debounce;
+
+	if(debounce & BUTTON_MASK)
+	{
+		//increment counter if high
+		if(debounce & (1 << BUTTON_1_PIN))
+		{
+			duration_tick_held[0]++;
+			if(duration_tick_held[0] > DUR_TICK_LONG_HOLD_THRESH)
+			{
+				button_1_state = BUTTON_STATE_HELD;
+			}
+		}
+		if(debounce & (1 << BUTTON_2_PIN))
+		{
+			duration_tick_held[1]++;
+			if(duration_tick_held[1] > DUR_TICK_LONG_HOLD_THRESH)
+			{
+				button_2_state = BUTTON_STATE_HELD;
+			}
+		}
+	}
+
+	if(change & BUTTON_MASK)
+	{
+		if(change & (1 << BUTTON_1_PIN))
+		{
+			if(debounce & (1 << BUTTON_1_PIN))
+			{
+				//Rised - Reinit
+				duration_tick_held[0] = 0;
+				if(button_held_ack == 1)
+				{
+					button_1_state = BUTTON_STATE_UNPRESSED;
+					button_held_ack = 0;
+				}
+			}
+			else
+			{
+				//Lowered - Set state
+				if(	(duration_tick_held[0] > DUR_TICK_SHORT_PRESS_THRESH) &&
+					(duration_tick_held[0] <= DUR_TICK_LONG_HOLD_THRESH))
+				{
+					button_1_state = BUTTON_STATE_PRESSED;
+				}
+			}
+		}
+		if(change & (1 << BUTTON_2_PIN))
+		{
+			if(debounce & (1 << BUTTON_2_PIN))
+			{
+				//Rised - Reinit
+				duration_tick_held[1] = 0;
+				if(button_held_ack == 1)
+				{
+					button_2_state = BUTTON_STATE_UNPRESSED;
+					button_held_ack = 0;
+				}
+			}
+			else
+			{
+				//Lowered - Set state
+				if((duration_tick_held[1] > DUR_TICK_SHORT_PRESS_THRESH) &&
+					(duration_tick_held[1] <= DUR_TICK_LONG_HOLD_THRESH))
+				{
+					button_2_state = BUTTON_STATE_PRESSED;
+				}
+			}
+		}
+	}
+
+	/*
 	if(change & BUTTON_MASK)
 	{
 
@@ -75,6 +152,7 @@ void GEN_TIMER_10K_IRQHANDLER(void)
 			}
 		}
 	}
+	*/
 
 	if(idx >= NUM_BUTTON_STATES)
 		idx = 0;
@@ -108,6 +186,7 @@ uint32_t get_effect_idx(void)
 
 void button_check(uint32_t* buttonState)
 {
+	/*
 	// implement xor of button states
 	// if only 1 button is pressed
 	if( !(button_1_state != BUTTON_STATE_UNPRESSED) !=
@@ -134,10 +213,25 @@ void button_check(uint32_t* buttonState)
 		button_held();
 	}
 
-	button_1_state = BUTTON_STATE_UNPRESSED;
-	button_2_state = BUTTON_STATE_UNPRESSED;
-
 	*buttonState = flag_button_changed_operation;
+	*/
+	static prev_button_states[2] = {BUTTON_STATE_UNPRESSED,BUTTON_STATE_UNPRESSED};
+	if(button_1_state == BUTTON_STATE_PRESSED)
+	{
+		button_1_pressed();
+	}
+	if(button_2_state == BUTTON_STATE_PRESSED)
+	{
+		button_2_pressed();
+	}
+	if(	(button_1_state == BUTTON_STATE_HELD && prev_button_states[0] != BUTTON_STATE_HELD) ||
+		(button_2_state == BUTTON_STATE_HELD && prev_button_states[1] != BUTTON_STATE_HELD))
+	{
+		button_held();
+		button_held_ack = 1;
+	}
+	prev_button_states[0] = button_1_state;
+	prev_button_states[1] = button_2_state;
 }
 
 mode get_mode(void)
@@ -164,9 +258,10 @@ void button_1_pressed(void)
 			break;
 		case MODE_EFFECT_SEQ:
 			//button 1 pressed = previous effect
-			if(effect_idx != 0)
+			effect_idx++;
+			if(effect_idx >= song_num_effects[song_idx])
 			{
-				effect_idx--;
+				effect_idx = 0;
 			}
 			break;
 		case MODE_SONG_START_COUNTDOWN:
@@ -175,31 +270,36 @@ void button_1_pressed(void)
 			break;
 		}
 	}
+	button_1_state = BUTTON_STATE_UNPRESSED;
 }
 
 void button_2_pressed(void)
 {
-	switch(curr_mode)
+	if(button_2_state == BUTTON_STATE_PRESSED)
 	{
-	case MODE_SONG_SEL:
-		//button_2 pressed = next song
-		song_idx++;
-		if(song_idx >= num_songs)
-			song_idx = 0;
-		break;
-	case MODE_EFFECT_SEQ:
-		//button 2 pressed = next effect
-		effect_idx++;
-		if(effect_idx >= song_num_effects[song_idx])
+		switch(curr_mode)
 		{
-			effect_idx = 0;
+		case MODE_SONG_SEL:
+			//button_2 pressed = next song
+			song_idx++;
+			if(song_idx >= num_songs)
+				song_idx = 0;
+			break;
+		case MODE_EFFECT_SEQ:
+			//button 2 pressed = next effect
+			effect_idx++;
+			if(effect_idx >= song_num_effects[song_idx])
+			{
+				effect_idx = 0;
+			}
+			break;
+		case MODE_SONG_START_COUNTDOWN:
+			//cancel selection
+			set_mode(MODE_SONG_SEL);
+			break;
 		}
-		break;
-	case MODE_SONG_START_COUNTDOWN:
-		//cancel selection
-		set_mode(MODE_SONG_SEL);
-		break;
 	}
+	button_2_state = BUTTON_STATE_UNPRESSED;
 }
 
 int32_t countdown=INIT_COUNTDOWN_SEC;

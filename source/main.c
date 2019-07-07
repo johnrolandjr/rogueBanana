@@ -74,7 +74,6 @@ int main(void) {
     //printf("Hello World\n");
 
 	FTM_StartTimer(GEN_TIMER_10K_PERIPHERAL, kFTM_SystemClock);
-    /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
     	uint32_t modeChange = 0;
     	button_check(&modeChange);
