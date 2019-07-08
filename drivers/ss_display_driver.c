@@ -1,5 +1,6 @@
 #include <button.h>
 #include "ss_display_driver.h"
+#include "time.h"
 #include "MK66F18.h"
 
 #define CYCLES_PER_LOOP 3
@@ -70,6 +71,7 @@ void update_7seg_display(void)
     		//move to next mode
     		//for now move directly into effect sequence
     		set_mode(MODE_EFFECT_SEQ);
+    		reinit_time(NULL);
     	}
     }
     else

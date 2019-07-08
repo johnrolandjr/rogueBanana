@@ -183,38 +183,17 @@ uint32_t get_effect_idx(void)
 {
 	return effect_idx;
 }
+void inc_effect_idx(void)
+{
+	effect_idx++;
+	if(effect_idx >= song_num_effects[song_idx])
+	{
+		effect_idx = 0;
+	}
+}
 
 void button_check(uint32_t* buttonState)
 {
-	/*
-	// implement xor of button states
-	// if only 1 button is pressed
-	if( !(button_1_state != BUTTON_STATE_UNPRESSED) !=
-		!(button_2_state != BUTTON_STATE_UNPRESSED))
-	{
-		flag_button_changed_operation = 1;
-		if( (button_1_state == BUTTON_STATE_HELD) ||
-			(button_2_state == BUTTON_STATE_HELD))
-		{
-			button_held();
-		}
-		else
-		{
-			if(button_1_state != BUTTON_STATE_UNPRESSED)
-				button_1_pressed();
-			else
-				button_2_pressed();
-		}
-	}
-	else if((button_1_state == BUTTON_STATE_HELD) &&
-			(button_2_state == BUTTON_STATE_HELD))
-	{
-		flag_button_changed_operation = 1;
-		button_held();
-	}
-
-	*buttonState = flag_button_changed_operation;
-	*/
 	static prev_button_states[2] = {BUTTON_STATE_UNPRESSED,BUTTON_STATE_UNPRESSED};
 	if(button_1_state == BUTTON_STATE_PRESSED)
 	{
@@ -258,11 +237,10 @@ void button_1_pressed(void)
 			break;
 		case MODE_EFFECT_SEQ:
 			//button 1 pressed = previous effect
-			effect_idx++;
-			if(effect_idx >= song_num_effects[song_idx])
-			{
-				effect_idx = 0;
-			}
+			//go back to beginning of effect
+
+			//set time accordingly
+
 			break;
 		case MODE_SONG_START_COUNTDOWN:
 			//cancel selection
@@ -287,11 +265,7 @@ void button_2_pressed(void)
 			break;
 		case MODE_EFFECT_SEQ:
 			//button 2 pressed = next effect
-			effect_idx++;
-			if(effect_idx >= song_num_effects[song_idx])
-			{
-				effect_idx = 0;
-			}
+			inc_effect_idx();
 			break;
 		case MODE_SONG_START_COUNTDOWN:
 			//cancel selection
@@ -308,12 +282,18 @@ void button_held(void)
 	if( curr_mode == MODE_SONG_START_COUNTDOWN)
 	{
 		set_mode(MODE_SONG_SEL);
+		clearScreen();
+		screen_show();
 	}
 	else
 	{
 		curr_mode++;
 		if(curr_mode >= MODE_EFFECT_SEQ)
-			curr_mode = MODE_SONG_SEL;
+		{
+			set_mode(MODE_SONG_SEL);
+			clearScreen();
+			screen_show();
+		}
 
 		//reset mode
 		switch(curr_mode)

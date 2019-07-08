@@ -41,6 +41,7 @@
 #include "clock_config.h"
 #include "MK66F18.h"
 #include "ss_display_driver.h"
+#include "time.h"
 #include "screen.h"
 
 /* TODO: insert other include files here. */
@@ -50,6 +51,7 @@
 
 void mode_update(uint32_t changes);
 void mode_wait(void);
+
 
 /*
  * @brief   Application entry point.
@@ -76,6 +78,7 @@ int main(void) {
 	FTM_StartTimer(GEN_TIMER_10K_PERIPHERAL, kFTM_SystemClock);
     while(1) {
     	uint32_t modeChange = 0;
+    	update_main_loop_time();
     	button_check(&modeChange);
     	mode_update(modeChange);
     	mode_wait();
@@ -110,13 +113,13 @@ void mode_wait(void)
 	switch(get_mode())
 	{
 	case MODE_SONG_SEL:
-		wait_ms_blocking((SONG_SEL_TIME_MS/SONG_SEL_TIME_CHECKS));
+		main_loop_period_wait((SONG_SEL_TIME_MS/SONG_SEL_TIME_CHECKS));
 		break;
 	case MODE_SONG_START_COUNTDOWN:
 		wait_ms_blocking(1000);
 		break;
 	case MODE_EFFECT_SEQ:
-		wait_ms_blocking(update_period_ms);
+		main_loop_period_wait(update_period_ms);
 		break;
 	}
 }

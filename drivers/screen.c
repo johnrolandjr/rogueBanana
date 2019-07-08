@@ -10,6 +10,7 @@
 #include "time.h"
 #include "MK66F18.h"
 #include "fsl_sd_disk.h"
+#include "button.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -17,14 +18,14 @@ extern edma_handle_t * s_EDMAHandle;
 uint8_t ones = 0xFF;
 uint8_t screen[BITS_PER_LED*LEDS_PER_STRIP];
 uint32_t update_in_progress = 0;
-uint32_t update_time = 0;
+time_s_ms update_time = {0,0};
 uint32_t update_period_ms=0;
 
 DMA_Type * p_dma_regs = EDMA_1_DMA_BASEADDR;
 FTM_Type * p_ftm_regs = WS28XX_BIT_TIME_PERIPHERAL;
-DMAMUX_Type * p_dma_mux_regs = DMAMUX_BASE;
-PORT_Type * p_porta_regs = PORTC_BASE;
-LPTMR_Type * p_lptimer_regs = LPTMR0_BASE;
+DMAMUX_Type * p_dma_mux_regs = (DMAMUX_Type *)DMAMUX_BASE;
+PORT_Type * p_porta_regs = (PORT_Type *)PORTC_BASE;
+LPTMR_Type * p_lptimer_regs = (LPTMR_Type *)LPTMR0_BASE;
 
 screenMapping map;
 static x_y map_mem[MAP_COLUMNS][MAP_ROWS];
@@ -50,7 +51,7 @@ void WS28XX_BIT_TIME_IRQHANDLER(void)
 void DMA2_DMA18_IRQHandler(void)
 {
 	//set flag to signal that dma has finished updating the screen
-	update_time = LPTMR_GetCurrentTimerCount(LPTMR0);
+	update_time = get_time();
 	update_in_progress = 0;
 
 	//acknowledge interrupt
@@ -317,6 +318,7 @@ int32_t read_config(song_conf * pCfg)
 	f_gets(line, 256, &cfg_file);
 	uint32_t newSongIdx = 0;
 	effect_params * pEndEffect;
+	uint32_t endTime;
 	while( (fr == FR_OK) && (f_eof(&cfg_file) == 0))
 	{
 		//parse line
@@ -329,27 +331,39 @@ int32_t read_config(song_conf * pCfg)
 			//parse out time in seconds
 			char * pTime = pTok;
 			pTok = strtok(NULL, ",");
-			//parse out effect
-			effect_type effType = (effect_type) atoi(pTok);
-			pEndEffect->pNextEff = malloc(sizeof(effect_params));
-			fillEffect(effType, pEndEffect->pNextEff, line);
-			pEndEffect = (effect_params *)(pEndEffect->pNextEff);
-			uint32_t seconds = parseTime(pTime);
-			pEndEffect->effectBeginSec = seconds;
+			if(pTok != NULL)
+			{
+				//parse out effect
+				effect_type effType = (effect_type) atoi(pTok);
+				pEndEffect->pNextEff = malloc(sizeof(effect_params));
+				fillEffect(effType, pEndEffect->pNextEff, line);
+				pEndEffect = (effect_params *)(pEndEffect->pNextEff);
+				uint32_t seconds = parseTime(pTime);
+				endTime += seconds;
+				pSongs[newSongIdx-1]->endTimeSec = endTime;
+				pEndEffect->effectBeginSec = seconds;
+			}
+			else
+			{
+				//end duration specified
+				endTime = parseTime(pTime);
+				pSongs[newSongIdx-1]->endTimeSec = endTime;
+			}
 			pEndEffect->pNextEff = NULL;
 		}
 		else
 		{
 			//new song
 			pSongs[newSongIdx] = (song_effects*)malloc(sizeof(song_effects));
+			endTime = DEFAULT_LAST_EFF_DURATION_SEC;
 			switch(*pTok)
 			{
 			case('A'): //song effects will start after first beat detected
-				pSongs[newSongIdx]->pFirstEff = ST_EFF_ACCEL;
+				pSongs[newSongIdx]->startType = ST_EFF_ACCEL;
 				break;
 			case('T'): //song effects will start after 3 seconds
 			default:   //syntax error, assume 'T'
-				pSongs[newSongIdx]->pFirstEff = ST_EFF_NORMAL;
+				pSongs[newSongIdx]->startType = ST_EFF_NORMAL;
 				pTok = strtok(NULL, ",");
 				effect_type effType = (effect_type) atoi(pTok);
 				pSongs[newSongIdx]->pFirstEff = (effect_params *)malloc(sizeof(effect_params));
@@ -376,7 +390,7 @@ int32_t read_config(song_conf * pCfg)
 		while(pEff != NULL)
 		{
 			numEff++;
-			pEff = pEff->pNextEff;
+			pEff = (effect_params *)(pEff->pNextEff);
 		}
 		pCfg->effects_per_song[a] = numEff;
 	}
@@ -461,11 +475,44 @@ effect_params * pPrevEffect;
 effect_params * pCurrEffect;
 void updateScreen(void)
 {
-	switch(pCurrEffect->effectType)
+	//look at time and determine if we need to do something
+	//	-load next effect
+	//	-go back to main menu
+
+	uint32_t cur_time_s = get_time_sec();
+	effect_params * pNextEff = (effect_params *)(pCurrEffect->pNextEff);
+	if(pNextEff != NULL)
 	{
-		case ET_PLAY_RAW_VIDEO:
-			glediator_video();
-			break;
+		if(cur_time_s == pNextEff->effectBeginSec )
+		{
+			//time to advance to next effect
+			inc_effect_idx();
+
+			pPrevEffect = pCurrEffect;
+			pCurrEffect = (effect_params *)(pCurrEffect->pNextEff);
+			reset_effect();
+		}
+	}
+	else
+	{
+		//be looking for the end duration
+		if(pSongs[get_song_idx()]->endTimeSec <= get_time_sec())
+		{
+			//end of song animation
+			set_mode(MODE_SONG_SEL);
+			clearScreen();
+		}
+	}
+
+	//if we are still in this animation mode
+	if(get_mode() == MODE_EFFECT_SEQ)
+	{
+		switch(pCurrEffect->effectType)
+		{
+			case ET_PLAY_RAW_VIDEO:
+				glediator_video();
+				break;
+		}
 	}
 }
 
@@ -664,6 +711,22 @@ void rainbowUpdate(void)
 	setPixel(0, 0, clr);
 }
 
+void clearScreen(void)
+{
+	rgb_led off;
+	off.raw = 0;
+	off.r = 0x00;
+	off.g = 0x00;
+	off.b = 0x00;
+
+	for(int row=0; row < MAP_ROWS; row++)
+	{
+		for(int col=0; col < MAP_COLUMNS; col++)
+		{
+			setPixel(col,row,off);
+		}
+	}
+}
 void singleColorUpdate(void)
 {
 	static uint32_t y = 0;
@@ -805,6 +868,16 @@ void reset_glediator_video(void)
 	res = f_close(&vid_fil);
 	res = f_open(&vid_fil, pCurrEffect->params.video.filepath, FA_READ);
 	res = 2 + res;
+}
+void close_glediator_video(void)
+{
+	FRESULT res;
+	if( (pCurrEffect == NULL) ||
+		(pCurrEffect->effectType != ET_PLAY_RAW_VIDEO ) ||
+		(pCurrEffect->parseStatus != CFG_PARSE_OK) ||
+		(pCurrEffect->params.video.filepath == NULL))
+		return;
+	res = f_close(&vid_fil);
 }
 void glediator_video(void)
 {

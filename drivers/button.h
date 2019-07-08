@@ -44,6 +44,7 @@ extern button_state button_2_state;
 void button_init(song_conf cfg);
 uint32_t get_song_idx(void);
 uint32_t get_effect_idx(void);
+void inc_effect_idx(void);
 void button_check(uint32_t * buttonState);
 void button_1_pressed(void);
 void button_2_pressed(void);

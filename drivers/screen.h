@@ -89,6 +89,7 @@ typedef struct
 typedef struct
 {
 	start_effect_type startType;
+	uint32_t endTimeSec;
 	effect_params * pFirstEff;
 }song_effects;
 
@@ -104,6 +105,8 @@ extern song_effects * pSongs[MAX_NUM_SONGS];
 
 #define WS28XX_LATCH_MS 1
 
+#define DEFAULT_LAST_EFF_DURATION_SEC 30
+
 #define RAINBOW_CYCLE_PERIOD 33
 //public prototype declarations
 int32_t screen_init(song_conf * pCfg);
@@ -113,7 +116,6 @@ void init_sdcard(void);
 void updateScreen(void);
 void fillEffect(effect_type effType, effect_params * pEff, char * pLine);
 uint32_t parseTime(char * pTime);
-uint32_t get_ms_delta(uint32_t begin);
 void screen_update_reset(void);
 
 //mode prototypes
@@ -121,10 +123,12 @@ void mode_rainbow_init(void);
 void rainbowUpdate(void);
 void americaFadeUpdate(void);
 void glediator_video(void);
+void clearScreen(void);
 void singleColorUpdate(void);
 
 void reset_effect(void);
 void reset_glediator_video(void);
+void close_glediator_video(void);
 
 //helper functions
 unsigned int h2rgb(unsigned int v1, unsigned int v2, unsigned int hue);
